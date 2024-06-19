@@ -2,7 +2,6 @@ package ethereumRPC
 
 import (
 	"ethereum-parser/internal/services/models"
-	inmemory "ethereum-parser/internal/storage/in-memory"
 	"log"
 	"os"
 )
@@ -15,10 +14,24 @@ type Parser interface {
 
 type parser struct {
 	EthereumRpcURL string // Just for simplicity; better to do configuration as dependency injection
-	Storage        inmemory.Storage
+	Storage        StorageService
 }
 
-func NewParser(storage inmemory.Storage) Parser {
+type StorageService interface {
+	SubscribeToAddress(address string) bool
+	GetLastParsedBlock() int
+	SetLastParsedBlock(blockNum int)
+	IsSubscribed(address string) bool
+	AddTXtoAddressRealTime(blockNum int, tx models.Transaction, address string)
+	AddTXtoAddress(tx models.Transaction, address string)
+	GetTransactionsByAddress(address string) []models.Transaction
+
+	GetSubscriptionsStorage() map[string]bool
+	GetTXsPerAddressOfLatestBlockStorage() map[int]map[string][]models.Transaction
+	GetTXsPerAddressTotalStorage() map[string][]models.Transaction
+}
+
+func NewParser(storage StorageService) Parser {
 	return &parser{
 		EthereumRpcURL: os.Getenv("ETHEREUM_RPC_ENDPOINT_URL"),
 		Storage:        storage,

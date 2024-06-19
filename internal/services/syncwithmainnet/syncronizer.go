@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"ethereum-parser/internal/services/models"
-	inmemory "ethereum-parser/internal/storage/in-memory"
 	"ethereum-parser/pkg/utils"
 	"io/ioutil"
 	"log"
@@ -18,10 +17,24 @@ type Synchronizer interface {
 
 type synchronizer struct {
 	EthereumRpcURL string
-	Storage        inmemory.Storage
+	Storage        StorageService
 }
 
-func NewSynchronizer(storage inmemory.Storage) Synchronizer {
+type StorageService interface {
+	SubscribeToAddress(address string) bool
+	GetLastParsedBlock() int
+	SetLastParsedBlock(blockNum int)
+	IsSubscribed(address string) bool
+	AddTXtoAddressRealTime(blockNum int, tx models.Transaction, address string)
+	AddTXtoAddress(tx models.Transaction, address string)
+	GetTransactionsByAddress(address string) []models.Transaction
+
+	GetSubscriptionsStorage() map[string]bool
+	GetTXsPerAddressOfLatestBlockStorage() map[int]map[string][]models.Transaction
+	GetTXsPerAddressTotalStorage() map[string][]models.Transaction
+}
+
+func NewSynchronizer(storage StorageService) Synchronizer {
 	return &synchronizer{
 		EthereumRpcURL: os.Getenv("ETHEREUM_RPC_ENDPOINT_URL"),
 		Storage:        storage,
@@ -29,10 +42,11 @@ func NewSynchronizer(storage inmemory.Storage) Synchronizer {
 }
 
 func (s *synchronizer) SyncWithMainNetViaRPC() {
+	lastParsedBlok := s.Storage.GetLastParsedBlock()
 	rpcRequest, err := json.Marshal(map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "eth_getBlockByNumber",
-		"params":  []interface{}{"latest", true},
+		"params":  []interface{}{lastParsedBlok, true},
 		"id":      1,
 	})
 	if err != nil {

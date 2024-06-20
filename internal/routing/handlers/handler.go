@@ -23,7 +23,7 @@ func NewHandler(parser ethereumRPC.Parser) *handler {
 }
 
 func (h *handler) GetCurrentBlock(w http.ResponseWriter, r *http.Request) {
-	lastParsedBlock := h.ParserService.GetCurrentBlock()
+	lastParsedBlock := h.ParserService.GetCurrentBlock(r.Context())
 
 	jsonResponse, marshalErr := json.Marshal(lastParsedBlock)
 	if marshalErr != nil {
@@ -40,7 +40,7 @@ func (h *handler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	ok := h.ParserService.Subscribe(address)
+	ok := h.ParserService.Subscribe(r.Context(), address)
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -57,7 +57,7 @@ func (h *handler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	transactions := h.ParserService.GetTransactions(address)
+	transactions := h.ParserService.GetTransactions(r.Context(), address)
 	resp, err := json.Marshal(transactions)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

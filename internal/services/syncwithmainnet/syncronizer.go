@@ -2,6 +2,7 @@ package syncwithmainnet
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"ethereum-parser/internal/services/models"
 	"ethereum-parser/pkg/utils"
@@ -13,7 +14,7 @@ import (
 )
 
 type Synchronizer interface {
-	SyncWithMainNetViaRPC()
+	SyncWithMainNetViaRPC(ctx context.Context)
 }
 
 type synchronizer struct {
@@ -22,17 +23,17 @@ type synchronizer struct {
 }
 
 type StorageService interface {
-	SubscribeToAddress(address string) bool
-	GetLastParsedBlock() int
-	SetLastParsedBlock(blockNum int)
-	IsSubscribed(address string) bool
-	AddTXtoAddressRealTime(blockNum int, tx models.Transaction, address string)
-	AddTXtoAddress(tx models.Transaction, address string)
-	GetTransactionsByAddress(address string) []models.Transaction
+	SubscribeToAddress(ctx context.Context, address string) bool
+	GetLastParsedBlock(ctx context.Context) int
+	SetLastParsedBlock(ctx context.Context, blockNum int)
+	IsSubscribed(ctx context.Context, address string) bool
+	AddTXtoAddressRealTime(ctx context.Context, blockNum int, tx models.Transaction, address string)
+	AddTXtoAddress(ctx context.Context, tx models.Transaction, address string)
+	GetTransactionsByAddress(ctx context.Context, address string) []models.Transaction
 
-	GetSubscriptionsStorage() map[string]bool
-	GetTXsPerAddressOfLatestBlockStorage() map[int]map[string][]models.Transaction
-	GetTXsPerAddressTotalStorage() map[string][]models.Transaction
+	GetSubscriptionsStorage(ctx context.Context) map[string]bool
+	GetTXsPerAddressOfLatestBlockStorage(ctx context.Context) map[int]map[string][]models.Transaction
+	GetTXsPerAddressTotalStorage(ctx context.Context) map[string][]models.Transaction
 }
 
 func NewSynchronizer(storage StorageService) Synchronizer {
@@ -42,21 +43,21 @@ func NewSynchronizer(storage StorageService) Synchronizer {
 	}
 }
 
-func (s *synchronizer) SyncWithMainNetViaRPC() {
+func (s *synchronizer) SyncWithMainNetViaRPC(ctx context.Context) {
 	// todo error handling
-	blocks, _ := s.getBlocks()
+	blocks, _ := s.getBlocks(ctx)
 	blockNumber, err := utils.ConvertHexToInt(blocks.Result.Number)
 	if err != nil {
 		log.Println("error in conversion hex to integer")
 	}
 
-	s.Storage.SetLastParsedBlock(blockNumber)
+	s.Storage.SetLastParsedBlock(ctx, blockNumber)
 
 	// todo enhancement: worker pool
 	for _, tx := range blocks.Result.Transactions {
 		// AddTXtoAddress: FOR NON-REALTIME NOTIFICATION
-		s.Storage.AddTXtoAddress(tx, tx.From)
-		s.Storage.AddTXtoAddress(tx, tx.To)
+		s.Storage.AddTXtoAddress(ctx, tx, tx.From)
+		s.Storage.AddTXtoAddress(ctx, tx, tx.To)
 
 		// AddTXtoAddressRealTime: FOR REALTIME NOTIFICATION for the inbound/outbound TXs according to CURRENT BLOCK
 		// s.Storage.AddTXtoAddressRealTime(blockNumber, tx, tx.From)
@@ -64,9 +65,9 @@ func (s *synchronizer) SyncWithMainNetViaRPC() {
 	}
 }
 
-func (s *synchronizer) getBlocks() (*models.BlockResponse, error) {
+func (s *synchronizer) getBlocks(ctx context.Context) (*models.BlockResponse, error) {
 	var blockHeight interface{}
-	lastParsedBlok := s.Storage.GetLastParsedBlock()
+	lastParsedBlok := s.Storage.GetLastParsedBlock(ctx)
 	if lastParsedBlok == 0 {
 		blockHeight = "latest"
 	} else {

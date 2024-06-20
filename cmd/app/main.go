@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"ethereum-parser/internal/routing"
 	"ethereum-parser/internal/routing/handlers"
 	ethereumRPC "ethereum-parser/internal/services/ethereum-rpc"
@@ -15,6 +16,7 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	// simple load config
 	godotenv.Load(".env")
 
@@ -28,12 +30,12 @@ func main() {
 	// synchronizing with the mainnet to process the blocks
 	ticker := time.NewTicker(10 * time.Second) // imagine 10 seconds is the average block generation rate on ETH
 	go func() {
-		synchronizer.SyncWithMainNetViaRPC()
+		synchronizer.SyncWithMainNetViaRPC(ctx)
 		for {
 			select {
 			case <-ticker.C:
 				fmt.Println("1")
-				synchronizer.SyncWithMainNetViaRPC()
+				synchronizer.SyncWithMainNetViaRPC(ctx)
 			}
 		}
 	}()

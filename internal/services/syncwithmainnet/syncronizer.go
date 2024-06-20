@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"ethereum-parser/internal/services/models"
 	"ethereum-parser/pkg/utils"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -42,57 +43,62 @@ func NewSynchronizer(storage StorageService) Synchronizer {
 }
 
 func (s *synchronizer) SyncWithMainNetViaRPC() {
+	// todo error handling
+	blocks, _ := s.getBlocks()
+	blockNumber, err := utils.ConvertHexToInt(blocks.Result.Number)
+	if err != nil {
+		log.Println("error in conversion hex to integer")
+	}
+
+	s.Storage.SetLastParsedBlock(blockNumber)
+
+	// todo enhancement: worker pool
+	for _, tx := range blocks.Result.Transactions {
+		// AddTXtoAddress: FOR NON-REALTIME NOTIFICATION
+		s.Storage.AddTXtoAddress(tx, tx.From)
+		s.Storage.AddTXtoAddress(tx, tx.To)
+
+		// AddTXtoAddressRealTime: FOR REALTIME NOTIFICATION for the inbound/outbound TXs according to CURRENT BLOCK
+		// s.Storage.AddTXtoAddressRealTime(blockNumber, tx, tx.From)
+		// s.Storage.AddTXtoAddressRealTime(blockNumber, tx, tx.From)
+	}
+}
+
+func (s *synchronizer) getBlocks() (*models.BlockResponse, error) {
+	var blockHeight interface{}
 	lastParsedBlok := s.Storage.GetLastParsedBlock()
+	if lastParsedBlok == 0 {
+		blockHeight = "latest"
+	} else {
+		blockHeight = lastParsedBlok
+	}
+
 	rpcRequest, err := json.Marshal(map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "eth_getBlockByNumber",
-		"params":  []interface{}{lastParsedBlok, true},
+		"params":  []interface{}{blockHeight, true},
 		"id":      1,
 	})
 	if err != nil {
-		log.Print("Serialize error")
+		return nil, fmt.Errorf("serialize error: %v", err)
 	}
 
 	res, err := http.Post(s.EthereumRpcURL, "application/json", bytes.NewBuffer(rpcRequest))
 	if err != nil {
-		log.Println("Serialize error")
+		return nil, fmt.Errorf("serialize error: %v", err)
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Println("error read body of the response")
+		return nil, fmt.Errorf("error read body of the response: %v", err)
 	}
 
-	var blockResponse models.BlockResponse
+	var blockResponse *models.BlockResponse
 	err = json.Unmarshal(body, &blockResponse)
 	if err != nil {
-		log.Println("2", err)
+		return nil, fmt.Errorf("unmarshal error: %v", err)
 	}
 
-	blockNumber, err := utils.ConvertHexToInt(blockResponse.Result.Number)
-	if err != nil {
-		log.Println("error in conversion hex to integer")
-	}
-	s.Storage.SetLastParsedBlock(blockNumber)
-
-	// enhancement: worker pool
-	for _, tx := range blockResponse.Result.Transactions {
-		// AddTXtoAddress: FOR NON-REALTIME NOTIFICATION
-		//s.Storage.AddTXtoAddress(tx, tx.From)
-		//s.Storage.AddTXtoAddress(tx, tx.To)
-
-		// AddTXtoAddressRealTime: FOR REALTIME NOTIFICATION for the inbound/outbound TXs according to CURRENT BLOCK
-		s.Storage.AddTXtoAddressRealTime(blockNumber, tx, tx.From)
-		s.Storage.AddTXtoAddressRealTime(blockNumber, tx, tx.From)
-	}
-
-	/*
-		// LOG FOR POSTMAN TEST. Get the address from the stdout and use it for API calls
-		storage := s.Storage.GetTXsPerAddressOfLatestBlockStorage()
-		for key, val := range storage[s.Storage.GetLastParsedBlock()] {
-			log.Println("GetTXsPerAddressOfLatestBlockStorage: ", key, val)
-			break
-		}
-	*/
+	return blockResponse, nil
 }

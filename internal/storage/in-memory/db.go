@@ -24,7 +24,7 @@ type storage struct {
 	subscriptions              map[string]bool
 	tXsPerAddressOfLatestBlock map[int]map[string][]models.Transaction // blockNum: {address: transactionsOfCurrentBlock}
 	tXsPerAddressTotal         map[string][]models.Transaction         // {address: allTransactions}
-	mu                         sync.Mutex
+	mu                         sync.RWMutex
 }
 
 func NewStorage() Storage {
@@ -38,84 +38,87 @@ func NewStorage() Storage {
 
 func (s *storage) SubscribeToAddress(address string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.subscriptions[address] = true
-	if _, ok := s.subscriptions[address]; !ok {
-		return false
-	}
+	s.mu.Unlock()
 
 	return true
 }
 
 func (s *storage) GetLastParsedBlock() int {
-	return s.currentParsedBlock
+	s.mu.RLock()
+	currentBlockNum := s.currentParsedBlock
+	s.mu.RUnlock()
+
+	return currentBlockNum
 }
 
 func (s *storage) SetLastParsedBlock(blockNum int) {
+	s.mu.Lock()
 	s.currentParsedBlock = blockNum
+	s.mu.Unlock()
 }
 
 func (s *storage) IsSubscribed(address string) bool {
-	isSubscribed, _ := s.subscriptions[address]
-	if isSubscribed {
-		return true
-	}
+	s.mu.RLock()
+	isSubscribed := s.subscriptions[address]
+	s.mu.RUnlock()
 
-	return false
+	return isSubscribed
 }
 
 func (s *storage) AddTXtoAddressRealTime(blockNum int, tx models.Transaction, address string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if len(s.tXsPerAddressOfLatestBlock[blockNum]) == 0 {
 		s.tXsPerAddressOfLatestBlock[blockNum] = make(map[string][]models.Transaction)
 	}
-	// for easier testing let's consider that all transactions, including related to unsubscribed addresses, will be stored
-	s.tXsPerAddressOfLatestBlock[blockNum][address] = append(s.tXsPerAddressOfLatestBlock[blockNum][address], tx)
-	/*
-		if s.IsSubscribed(address) {
-			s.mu.Lock()
-			defer s.mu.Unlock()
 
-			s.tXsPerAddressOfLatestBlock[blockNum][address] = append(s.tXsPerAddressOfLatestBlock[blockNum][address], tx)
-		}
-	*/
+	if s.IsSubscribed(address) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.tXsPerAddressOfLatestBlock[blockNum][address] = append(s.tXsPerAddressOfLatestBlock[blockNum][address], tx)
+	}
 }
 
 func (s *storage) AddTXtoAddress(tx models.Transaction, address string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// for easier testing let's consider that all transactions, including related to unsubscribed addresses, will be stored
-	s.tXsPerAddressTotal[address] = append(s.tXsPerAddressTotal[address], tx)
-	/*
-		if s.IsSubscribed(address) {
-			s.mu.Lock()
-			defer s.mu.Unlock()
+	if _, ok := s.tXsPerAddressTotal[address]; !ok {
+		s.tXsPerAddressTotal[address] = make([]models.Transaction, 0)
+	}
 
-			s.tXsPerAddressTotal[address] = append(s.tXsPerAddressTotal[address], tx)
-		}
-	*/
+	if s.IsSubscribed(address) {
+		s.tXsPerAddressTotal[address] = append(s.tXsPerAddressTotal[address], tx)
+	}
 }
 
 func (s *storage) GetTransactionsByAddress(address string) []models.Transaction {
-	// for simplicity only returns the TXs in the latest block(CURRENT BLOCK);
-	// Otherwise, tXsPerAddressTotal can be used to store all the TXs bound to an address.
+	s.mu.RLock()
+	transactions := s.tXsPerAddressTotal[address]
+	s.mu.RUnlock()
 
-	return s.tXsPerAddressOfLatestBlock[s.GetLastParsedBlock()][address]
-	//return s.tXsPerAddressTotal[address]
+	return transactions
 }
 
 func (s *storage) GetSubscriptionsStorage() map[string]bool {
-	return s.subscriptions
+	s.mu.RLock()
+	subscriptions := s.subscriptions
+	s.mu.RUnlock()
+
+	return subscriptions
 }
 
 func (s *storage) GetTXsPerAddressOfLatestBlockStorage() map[int]map[string][]models.Transaction {
-	return s.tXsPerAddressOfLatestBlock
+	s.mu.RLock()
+	tXs := s.tXsPerAddressOfLatestBlock
+	s.mu.RUnlock()
+
+	return tXs
 }
 
 func (s *storage) GetTXsPerAddressTotalStorage() map[string][]models.Transaction {
-	return s.tXsPerAddressTotal
+	s.mu.RLock()
+	tXs := s.tXsPerAddressTotal
+	s.mu.RUnlock()
+
+	return tXs
 }

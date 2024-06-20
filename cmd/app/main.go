@@ -31,12 +31,8 @@ func main() {
 	ticker := time.NewTicker(10 * time.Second) // imagine 10 seconds is the average block generation rate on ETH
 	go func() {
 		synchronizer.SyncWithMainNetViaRPC(ctx)
-		for {
-			select {
-			case <-ticker.C:
-				fmt.Println("1")
-				synchronizer.SyncWithMainNetViaRPC(ctx)
-			}
+		for range ticker.C {
+			synchronizer.SyncWithMainNetViaRPC(ctx)
 		}
 	}()
 
@@ -47,6 +43,6 @@ func main() {
 		WriteTimeout: 5 * time.Second,
 		ReadTimeout:  5 * time.Second,
 	}
-	fmt.Println(fmt.Sprintf("server is running on %s", srv.Addr))
+	fmt.Printf("server is running on %s", srv.Addr)
 	log.Fatal(srv.ListenAndServe())
 }
